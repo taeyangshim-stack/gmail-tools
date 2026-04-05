@@ -75,7 +75,13 @@ function step1_exosphere() {
   var failedThreads = 0;
 
   while (true) {
-    var threads = GmailApp.search(query, 0, 100);
+    var threads;
+    try {
+      threads = GmailApp.search(query, 0, 100);
+    } catch (e) {
+      Logger.log("  ⚠ 검색 실패: " + e.message);
+      break;
+    }
     if (threads.length === 0) break;
 
     var msgCount = 0;
@@ -96,13 +102,17 @@ function step1_exosphere() {
 
     if (DRY_RUN) {
       // DRY_RUN: 전체 대상 수 확인을 위해 계속 스캔
-      var moreThreads = GmailApp.search(query, 100, 100);
-      while (moreThreads.length > 0) {
-        for (var j = 0; j < moreThreads.length; j++) {
-          totalMessages += moreThreads[j].getMessageCount();
+      try {
+        var moreThreads = GmailApp.search(query, 100, 100);
+        while (moreThreads.length > 0) {
+          for (var j = 0; j < moreThreads.length; j++) {
+            totalMessages += moreThreads[j].getMessageCount();
+          }
+          totalThreads += moreThreads.length;
+          moreThreads = GmailApp.search(query, totalThreads, 100);
         }
-        totalThreads += moreThreads.length;
-        moreThreads = GmailApp.search(query, totalThreads, 100);
+      } catch (e) {
+        Logger.log("  ⚠ DRY_RUN 스캔 중 실패: " + e.message);
       }
       break;
     }
@@ -126,8 +136,18 @@ function step2_outlook() {
   Logger.log("DRY_RUN = " + DRY_RUN);
 
   var query = 'subject:"Microsoft Outlook 테스트 메시지"';
-  var threads = GmailApp.search(query, 0, 100);
+  var threads;
   var failed = false;
+
+  try {
+    threads = GmailApp.search(query, 0, 100);
+  } catch (e) {
+    Logger.log("  ⚠ 검색 실패: " + e.message);
+    Logger.log("──────────────────────────────────");
+    Logger.log("📊 STEP 2 결과 요약: 검색 실패 — " + e.message);
+    Logger.log("──────────────────────────────────");
+    return;
+  }
 
   if (threads.length === 0) {
     Logger.log("  대상 없음");
@@ -296,7 +316,19 @@ function step3_duplicates() {
 // 전체 실행 (한도 여유가 있을 때 사용)
 // ============================================================
 function runAll() {
-  step1_exosphere();
-  step2_outlook();
-  step3_duplicates();
+  try {
+    step1_exosphere();
+    step2_outlook();
+    step3_duplicates();
+    Logger.log("══════════════════════════════════");
+    Logger.log("✅ 전체 실행 완료");
+    Logger.log("══════════════════════════════════");
+  } catch (e) {
+    Logger.log("══════════════════════════════════");
+    Logger.log("❌ 실행 중단: " + e.message);
+    if (e.message.indexOf("too many times") !== -1) {
+      Logger.log("  → Gmail API 일일 한도 초과. 24시간 후 다시 실행하세요.");
+    }
+    Logger.log("══════════════════════════════════");
+  }
 }
